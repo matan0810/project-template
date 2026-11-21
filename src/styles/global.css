@@ -1,0 +1,75 @@
+/* Design tokens and base rules. Components use these tokens, never raw values, and logical
+   properties throughout (inline-start, not left), so right-to-left and left-to-right share
+   every rule. Change the look here. */
+:root {
+  color-scheme: dark;
+
+  --ink: #0b0b0c;
+  --surface: #131315;
+  --line: #26262a;
+  --line-strong: #38383e;
+  --text: #ececef;
+  --muted: #9a9aa3;
+  --faint: #66666e;
+  --accent: #7aa2f7;
+
+  --font: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --radius: 4px;
+  --tap: 40px;
+  --gutter: 32px;
+  --page: 1100px;
+  --header: 64px;
+}
+
+@media (pointer: coarse) {
+  :root {
+    --tap: 44px;
+  }
+}
+
+@media (max-width: 640px) {
+  :root {
+    --gutter: 20px;
+  }
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--ink);
+  color: var(--text);
+  font-family: var(--font);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+h3,
+p {
+  margin: 0;
+}
+
+button {
+  font: inherit;
+  cursor: pointer;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
