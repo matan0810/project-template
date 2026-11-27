@@ -239,6 +239,7 @@ told. Tools pinned to the cloud sessions' versions (Playwright) are never upgrad
 | `DESIGN.md`    | Rules, numbers and behaviour: what the product does and why |
 | `CHANGELOG.md` | Every change users notice, by version                       |
 | `SECURITY.md`  | What is stored, which hosts, threats and answers, settings  |
+| `SERVER.md`    | For a project with a server: the platform, identity, access |
 
 ## 13. This project
 
