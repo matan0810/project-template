@@ -1,153 +1,255 @@
 # Server standard
 
-For every project that has a server: where it runs, how it is built, and how people and
-devices are known and allowed. A project without a server ignores this file. A project with
-one follows it and records its own choices in `CLAUDE.md`, section 13, and `SECURITY.md`.
+For every project that has a server: where it runs, how it is built, how people are known and
+what they may do, how it is watched, and how it is tested. A project without a server ignores
+this file. A project with one follows it, and records its own choices in `CLAUDE.md`
+(section 13) and `SECURITY.md`.
 
-Status: proposed on 2026-11-27, at the owner's request to put every server in one place and
-to raise the bar set by family-bingo's user management. Part 1 waits for the owner's choice
-of platform; part 2 applies whatever the platform.
+Status: draft of 2026-11-27, written at the owner's request: one place for every server, and
+user management raised from family-bingo's to a professional standard. Waiting for the owner's
+choice of platform (part 1) and of access level (part 2).
+
+Built on these professional references:
+
+- **OWASP ASVS 5.0** (Application Security Verification Standard): the chapters on
+  authentication, session management, authorization, OAuth and OIDC, API and web service,
+  validation and business logic, and security logging.
+- **OWASP cheat sheets** on authorization, session management, logging and mass assignment.
+- **NIST SP 800-63B** (digital identity: authenticators, sessions, recovery).
+- **NIST RBAC** (role-based access control) and the principle of least privilege.
+- **RFC 9700** (OAuth 2.0 Security Best Current Practice) with **RFC 7636** (PKCE), and
+  **OpenID Connect Core**.
+- **GDPR article 5** (data minimisation and storage limitation).
+- The group model of products people already know: WhatsApp and Discord (an owner, admins,
+  invite links that can be revoked, an admin log).
 
 ## Part 1. One platform for every server
 
-### The choice
+### The candidates
 
-| Need of a project              | Cloudflare (Workers, D1, Durable Objects, KV) | Firebase (Firestore, Auth)              | Render (Node)             |
-| ------------------------------ | --------------------------------------------- | --------------------------------------- | ------------------------- |
-| Code of our own on the server  | Yes, TypeScript, tested like the site         | Only on the paid plan (Cloud Functions) | Yes                       |
-| Live rooms (a game, live mode) | Durable Objects with WebSockets               | Live queries, but no referee of our own | WebSockets                |
-| Always awake on the free plan  | Yes                                           | Yes                                     | No: sleeps, ~30 s to wake |
-| Sign-in with Google later      | Our own code (OpenID Connect)                 | Built in                                | Our own code              |
-| Works offline, syncs later     | Our own code                                  | Built in                                | Our own code              |
-| Already used by                | OnAir (`live-video`)                          | family-bingo                            | kavoom                    |
+| Need                                 | Cloudflare (Workers, D1, Durable Objects, KV) | Firebase (Firestore, Auth)              | Render (Node)              |
+| ------------------------------------ | --------------------------------------------- | --------------------------------------- | -------------------------- |
+| Code of our own on the server        | Yes, TypeScript, tested like the site         | Only on the paid plan (Cloud Functions) | Yes                        |
+| Live rooms (a game, live mode)       | Durable Objects with WebSockets               | Live queries, but no referee of our own | WebSockets                 |
+| Awake on the free plan               | Always                                        | Always                                  | Sleeps; about 30 s to wake |
+| Sign-in with Google                  | Our own code (about a day's work)             | Built in                                | Our own code               |
+| Works with no reception, syncs later | Our own code                                  | Built in                                | Our own code               |
+| Already used by                      | OnAir (`live-video`)                          | family-bingo                            | kavoom                     |
 
-**Recommended: Cloudflare.** It is the only one of the three that runs our own server code,
-keeps live rooms and stays awake on the free plan. A referee for kavoom's games, a lock time for
-Douze's predictions and a check of a bingo claim all need server code. The owner already runs
-OnAir's Worker there, with its token in the repository secrets.
+### Cloudflare's drawbacks, honestly
 
-What it costs us:
+1. **A different runtime.** Workers are not Node: some npm packages do not run, and local
+   development and tests need Cloudflare's tools (`wrangler`, the Workers test pool).
+2. **10 ms of CPU per request on the free plan.** It is plenty for checks, scores and
+   database work, since waiting on the network does not count. It is not enough to draw an
+   image or run heavy maths per request: such work is done ahead of time, or moved to the paid
+   plan ($5 a month).
+3. **Hard daily caps on the free plan.** 100,000 requests a day for Workers, and D1's daily
+   read and write quotas. Past a cap, requests fail until midnight UTC; nothing is billed.
+   Hence the usage warnings below.
+4. **D1 is SQLite.** It has one primary database, a 10 GB cap per database, and no
+   long-running transactions (statements are sent as a batch). This fits our data; a database
+   for heavy analytics it is not.
+5. **Lock-in.** D1 and Durable Objects are Cloudflare's own. To keep a way out, the rules live
+   in `shared/`, and the storage behind a thin interface of our own, so another host means
+   rewriting the adapter, not the app.
+6. **Build it ourselves.** Accounts, offline sync and email are not provided: more code of our
+   own, and more tests.
+7. **One account for every project.** It is one point of failure. Each project gets its own
+   API token, limited to its own resources, and the account has two-factor sign-in.
+8. **Shorter logs on the free plan.** We keep our own audit and usage records in the database
+   for what matters.
 
-- Google sign-in and offline sync are not built in. Google sign-in is about a hundred lines
-  of tested code (part 2, "Accounts"). Offline sync is needed only by family-bingo; it stays
-  on Firebase until a move is worth it.
+Firebase's drawbacks, for balance:
 
-Free limits, far above a group of friends:
+- No server code without the paid plan.
+- A heavy SDK, served from Google's hosts, so the CSP must allow them.
+- The rules language is hard to test deeply (family-bingo's rules hit the limit of 10 document
+  reads per request).
+- Data shaped around documents, not relations.
 
-- Workers: 100,000 requests a day.
-- D1: 5 GB, 5 million reads a day.
-- Durable Objects (SQLite) and KV within their free quotas.
+Render's drawback: the free server sleeps, so the first visit waits about 30 seconds.
+
+**Recommendation: Cloudflare.** It is the only one of the three that runs our own code, holds
+live rooms and stays awake for free. Its drawbacks are answered above. Firebase stays where its
+built-in offline sync is the point (family-bingo on a trip), until moving is worth it.
+
+### "Works with no reception"
+
+family-bingo is played on a road trip, often without reception. Firestore keeps a copy of the
+game on the phone, so the game opens with no signal, and a cell marked in a tunnel is kept and
+sent when the signal returns. On Cloudflare we would have to build that ourselves: a local copy
+in the browser, a queue of pending changes, and a rule for two phones that changed the same
+thing. It is possible, but it is real work, and it is why family-bingo stays on Firebase for now.
 
 ### Moving the existing servers (after the owner chooses)
 
-| Project      | Today                    | Plan                                                                          |
-| ------------ | ------------------------ | ----------------------------------------------------------------------------- |
-| OnAir        | Cloudflare Worker and KV | Stays; adopts part 2 when it gains users                                      |
-| Douze        | No server                | Built on Cloudflare from the start                                            |
-| kavoom       | Node on Render           | Rooms move to a Durable Object each; the site to Workers static assets; issue |
-| family-bingo | Firebase                 | Stays while offline play matters on a trip; part 2's upgrades apply; issue    |
+| Project      | Today                    | Plan                                                                        |
+| ------------ | ------------------------ | --------------------------------------------------------------------------- |
+| OnAir        | Cloudflare Worker and KV | Stays; adopts part 2 when it gains users                                    |
+| Douze        | No server                | Built on Cloudflare from the start                                          |
+| kavoom       | Node on Render           | Each room becomes a Durable Object; the site moves to Workers static assets |
+| family-bingo | Firebase                 | Stays while offline play matters; adopts part 2's model in its rules        |
 
 ### How a server project is laid out
 
-- `worker/`: the Worker (`wrangler.jsonc`, `src/`), one module per endpoint, and a Durable
-  Object class per kind of live room.
-- `shared/`: what the site and the Worker both use: types, parsing and checks of every value,
-  limits, the rules of the game. No DOM and no Worker APIs, so both sides import it, and a value
-  is checked by the same code on both ends.
-- `worker/migrations/`: D1 schema migrations, numbered and append-only.
-- Deploy: `.github/workflows/deploy-worker.yml` runs the checks, applies the migrations, then
-  `wrangler deploy`. It deploys from the production branch only, and skips politely until the
-  secrets exist.
-- Secrets: `CLOUDFLARE_API_TOKEN` (a token limited to Workers, D1 and Durable Objects of one
-  account) and `CLOUDFLARE_ACCOUNT_ID`, in the repository's secrets; runtime secrets with
-  `wrangler secret`. Never in the repository.
-- The site stays on GitHub Pages. The CSP's `connect-src` gains the Worker's host, and only
+- `worker/`: the Worker (`wrangler.jsonc`, `src/`), one module per group of endpoints, and a
+  Durable Object class per kind of live room.
+- `shared/`: what the site and the Worker both use. It holds the types, the parsing and checks
+  of every value, the limits, the capability table (part 2) and the rules of the game. No DOM
+  and no Worker APIs, so a value is checked by the same code on both ends.
+- `worker/migrations/`: D1 schema migrations, numbered and append-only; each one tested on a
+  copy of the previous schema.
+- **Deploy:** `.github/workflows/deploy-worker.yml` runs the checks, applies the migrations,
+  then `wrangler deploy`. It deploys from the production branch only, after the site's checks
+  pass, and skips politely until the secrets exist. Rollback is the previous deploy in the
+  Cloudflare dashboard (a phone is enough).
+- **Secrets:** a Cloudflare API token limited to the project's own Worker, D1 and Durable
+  Objects, and the account id, are kept in the repository's secrets. Runtime secrets are set
+  with `wrangler secret`. Nothing is in the repository.
+- **The site** stays on GitHub Pages. The CSP's `connect-src` gains the Worker's host, and only
   that; `SECURITY.md` lists it with the reason.
 
-## Part 2. Identity and access
+### Watching usage: warnings before trouble
+
+A scheduled workflow, once a day, reads the Worker's usage endpoint (protected by a secret)
+and opens a GitHub issue when a line is crossed. The owner gets it as a GitHub notification
+on the phone; no email service is needed.
+
+| Measure                       | Warn at                                     | Hard limit (part 2)       |
+| ----------------------------- | ------------------------------------------- | ------------------------- |
+| Groups in all                 | 100, 250, 500, 1,000, 1,500, then every 100 | 2,000: new groups refused |
+| Members in all                | 1,000, 5,000, 10,000                        | none                      |
+| Requests yesterday            | 50% and 80% of the daily cap                | Cloudflare's cap          |
+| D1 reads or writes yesterday  | 50% and 80% of the daily quota              | Cloudflare's quota        |
+| Database size                 | 1 GB, 2.5 GB, 4 GB                          | 5 GB                      |
+| Refusals for limits yesterday | 100 (someone may be abusing it)             | none                      |
+
+Each line is crossed once, and the issue says what was crossed and what to do (look, raise a
+limit, move to the paid plan).
+
+## Part 2. People and access
 
 ### Principles
 
-1. **The server is the only judge.** The site hides what a person may not do, but only the
-   server decides. Every rule below is enforced on the server, and has a test that it refuses.
-2. **Deny by default.** An endpoint states who may call it; anything not stated is refused.
-3. **Least knowledge.** Store names, not people: no email, phone or real identity unless a
-   feature needs it and the owner agreed.
-4. **Secrets are never stored or logged in clear.** Only their hashes are kept; they never
-   appear in an address's path or query, and never in an error message.
-5. **Every limit is written down** (the table below), in `shared/`, and tested.
+1. **The server is the only judge** (ASVS: authorization). The site hides what a person may
+   not do; only the server decides. Every rule is enforced on the server and has a test that
+   it refuses.
+2. **Deny by default; least privilege** (NIST RBAC). An action states which roles may do it;
+   anything not stated is refused.
+3. **One table of capabilities** (role × action), in `shared/`. The Worker checks it, the
+   site reads it to hide buttons, and a test walks every cell, allowed and refused.
+4. **Least knowledge** (GDPR article 5). Store a display name and what the game needs. Store
+   an email only if a feature needs it and the owner agreed. Delete what is no longer needed.
+5. **Secrets never stored or logged in clear** (ASVS: session management, cryptography). Only
+   their hashes are kept. They never go in an address's path or query, or in an error message.
+6. **Every limit written down,** in `shared/` and tested.
+7. **Proportionate.** Each control below is marked with the level that needs it, so a game
+   among friends does not carry a bank's machinery.
 
-### Who is who
+### Roles
 
-| Identity    | What it is                                                                    | How it is proven                                                             |
-| ----------- | ----------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
-| **Device**  | A browser on a phone or computer                                              | A random 256-bit device token, made on joining, kept in the device's storage |
-| **Member**  | A name in a group (one person), held by one or more devices                   | The server's record of which devices hold the name                           |
-| **Account** | Later: a person signed in with Google, linked to their members in every group | Google's signed ID token, checked on the server (OpenID Connect)             |
-
-**First without accounts** (the owner's choice for Douze, 2026-11-27). Accounts come later and
-add to members; they replace nothing.
-
-### Roles in a group
-
-| Role       | Who                                    | Can                                                                                                       |
+| Role       | Who                                    | May                                                                                                       |
 | ---------- | -------------------------------------- | --------------------------------------------------------------------------------------------------------- |
-| **Owner**  | Whoever created the group; exactly one | Everything an admin can; name and remove admins; hand ownership over; rotate the invite; delete the group |
-| **Admin**  | Named by the owner                     | The game's settings and results; drive live moments; release a stuck name; approve joiners                |
-| **Member** | Anyone who joined with the invite      | Their own entries; read what the phase allows                                                             |
+| **Owner**  | Whoever created the group; exactly one | Everything an admin may; name and remove admins; hand the group over; rotate the invite; delete the group |
+| **Admin**  | Named by the owner                     | The game's settings and results; drive live moments; release a member's name                              |
+| **Member** | Joined with the invite                 | Their own entries; read what the phase allows                                                             |
 
-Roles are per group. A capability table in `shared/` (role × action) is the one source of
-truth. The Worker checks it, the site reads it to hide buttons, and a test walks every cell,
-allowed and refused.
+Rules:
 
-### Joining and names
+- The owner can never be removed or demoted by anyone else.
+- Handing the group over is two steps: the owner offers it, and the new owner accepts.
 
-- **The invite** is an address with the group's id and a secret after `#`, so the secret
-  never reaches a server log. The site sends it in a header. The owner can **rotate** it: old
-  links stop letting people in, and the devices already in stay in.
-- **Optional approval:** the owner may switch on "a new device waits until an admin approves
-  it". It is off by default for a group of friends.
-- **Picking a name:** a new device picks a free name, or adds a new one within the group's
-  limit.
-- **Taking over a held name:**
-  - Every name: the device asks "is this you?", and the takeover is allowed but noted in
-    the log, and the owner sees it.
-  - The owner's and admins' names (**protected names**): they move only through a
-    **move link**, made on the old device or by the owner. It is single use and expires
-    after 15 minutes.
+### Three levels of who is who
 
-  This is family-bingo's trust model, with its first planned hardening built in.
+| Level | Who signs in                                             | Fits                                                                  |
+| ----- | -------------------------------------------------------- | --------------------------------------------------------------------- |
+| **1** | Nobody: an invite link, a name, the phone remembers      | One small trusted group, nothing to lose (family-bingo today)         |
+| **2** | **Owners and admins with Google; players with the link** | Anyone may open groups; players join in a tap (**recommended start**) |
+| **3** | Everyone with Google                                     | Personal history across years and devices; groups of strangers        |
 
-### Devices and recovery
+**Why level 2 to start.** Most of the hard parts of level 1 exist only to protect the people who
+manage a group when nobody signs in:
 
-- **Device list:** each member sees the devices that hold their name (when added, last
-  seen), and can sign out the others. The owner sees every device in the group and can revoke
-  one.
-- **Recovery code:** on creating a group, the owner gets a recovery code once (to save). It
-  restores ownership on a new phone when the old one is lost. Only its hash is stored, and
-  using it revokes the old owner devices.
-- **Leaving and deleting:** a member can leave, and their entries go with them, or are kept
-  anonymised if the group's history needs them. The owner can delete the group: everything goes,
-  after the owner types the group's name.
+- **The recovery code:** a lost owner phone means a lost group.
+- **Move links:** the only way to bring a protected name to a new phone.
+- **Protected names:** so nobody can take over a manager's name.
+- **Limits per internet address:** the only way to stop one person from opening many groups.
 
-### Phases and secrecy
+Signing in with Google, for managers only, removes all four:
 
-What a member may read depends on the phase of the game, on the server:
+- A lost phone is a new sign-in.
+- The owner role belongs to an account, not a name.
+- The limit on new groups counts per account.
 
-- Hidden entries are not sent, not merely not shown.
-- The reveal opens them all at once.
-- Times come from the server's clock, never the client's. A lock time (for example the start
-  of a show) is stored with the season and checked on every write.
+Players keep a tap-to-join experience with no account. A player who wants their name on more
+than one phone, or their history across years, can link Google later (level 3, per person, not
+per group).
 
-### Tokens and requests
+**What each level needs:**
 
-- Bearer device tokens go in the `Authorization` header and are compared in constant time.
-- Tokens are stored as SHA-256 hashes. A token belongs to one device and one group.
+| Control                                                                       | Level 1 | Level 2            | Level 3     |
+| ----------------------------------------------------------------------------- | ------- | ------------------ | ----------- |
+| Invite link with a secret after `#`, revocable, optional expiry and use count | Yes     | Yes                | Yes         |
+| Device token for players (256-bit, hashed, in a header)                       | Yes     | Players            | No          |
+| Google sign-in, code flow with PKCE through the Worker                        | No      | Managers           | Everyone    |
+| Capability table and its full test                                            | Yes     | Yes                | Yes         |
+| An admin releases a stuck name                                                | Yes     | Yes                | Rarely      |
+| Taking over a held name: "is this you?", allowed, logged, the owner told      | Yes     | Players            | No          |
+| Protected names, move links, recovery code                                    | Yes     | No: Google does it | No          |
+| Device list and revoke                                                        | Owner   | Owner (players)    | Each person |
+| Approval of new members (off by default)                                      | Option  | Option             | Option      |
+| Audit log                                                                     | Yes     | Yes                | Yes         |
+| Limits and usage warnings                                                     | Yes     | Yes                | Yes         |
+
+**Google sign-in without a third-party script.** The Worker runs OpenID Connect's
+authorization code flow with PKCE (RFC 7636, as RFC 9700 recommends). It keeps `state` and
+`nonce` and checks the ID token: the signature against Google's keys, the issuer, the
+audience and the expiry. Then it returns to the site with a one-time code in the address after
+`#`, which the site swaps for a session token. No Google script runs on our pages, so the CSP
+stays closed.
+
+What the owner sets up once, in a browser: an OAuth client in Google Cloud, with the site's
+return address. The client secret goes into the Worker's secrets.
+
+### Sessions and tokens (ASVS: session management; NIST SP 800-63B)
+
+- Sessions are random 256-bit tokens, sent in the `Authorization` header, stored as SHA-256
+  hashes, and compared in constant time.
+- A manager's session expires after 30 days of no use, and always after 180 days; signing out
+  revokes it at once.
+- A player's device token lasts while the device plays: 400 days of no use expires it.
+- Tokens are bound to one group, or to one account for Google sessions.
+- Revoking a member, rotating the invite or handing the group over takes effect on the next
+  request, since every request is checked against the database.
+
+### Invites
+
+Like WhatsApp or Discord:
+
+- The secret goes after `#`, so it never reaches a server log, and the site sends it in a
+  header.
+- An invite can expire and can have a maximum number of uses.
+- The owner can revoke the link and make a new one; the devices already in stay in.
+- An optional "an admin approves each new member" is off by default for friends.
+
+### Phases and secrecy (ASVS: validation and business logic)
+
+- What a member may read depends on the game's phase, decided on the server. Hidden entries are
+  not sent at all, not merely hidden on the screen.
+- Times come from the server's clock, never the client's. A lock time (the start of a show) is
+  stored with the season and checked on every write.
+
+### Requests (ASVS: API and web service)
+
 - CORS allows the site's own origin only.
-- JSON bodies only, with a size cap, parsed by `shared/`. An unknown field is refused, not
-  ignored.
-- Errors say what was wrong in general terms: no stack, no data, no hint of whether a
-  secret was close.
+- Request bodies are JSON only, with a size cap, parsed by `shared/`.
+- An unknown field is refused, not ignored (OWASP: mass assignment).
+- Every id and country is checked against a closed list, and every length and number is capped.
+- Errors say what was wrong in general terms: no stack, no data, no hint that a secret was
+  close.
+- Rate limits, counted in the database or in a Durable Object, answer with `429` and a
+  `Retry-After` header.
 
 ### Limits (defaults; a project may lower them, and raises one only with a reason)
 
@@ -156,37 +258,43 @@ What a member may read depends on the phase of the game, on the server:
 | Request body                              | 32 KB                                                      |
 | Names (member, group)                     | 1 to 40 characters, cleaned of control and direction marks |
 | Members in a group                        | 40                                                         |
-| Devices per member                        | 5                                                          |
-| Groups created from one address           | 5 a day                                                    |
-| Groups in all                             | 2,000 (a warning to the owner at 1,500)                    |
-| Writes from one device                    | 60 a minute                                                |
-| Joins and failed secrets from one address | 10 an hour, then a pause                                   |
+| Groups one account owns                   | 10 (level 2 and 3)                                         |
+| Groups created from one address           | 5 a day (level 1 only)                                     |
+| Groups in all                             | 2,000, with the warnings of part 1                         |
+| Devices per player                        | 5                                                          |
+| Writes from one device or account         | 60 a minute                                                |
+| Joins and failed secrets from one address | 10 an hour, then a pause of an hour                        |
 | Live room connections                     | 50 per group                                               |
 | Audit log                                 | 1,000 entries per group, or 1 year                         |
 
-### The audit log
+### The audit log (OWASP: logging)
 
-Joins, name takeovers, role changes, revocations, invite rotations, deletions and every admin
-action are appended to the group's log: who, what, when, from which device. The owner and the
-admins read it. Nobody edits it.
+- **What is appended:** joins, name takeovers, role changes, revocations, invite changes,
+  handovers, deletions and every admin action. Each entry records who, what, when, and from
+  which device or account.
+- **What is never recorded:** a secret, a token, or the content of a hidden entry.
+- The owner and admins read it; nobody edits it.
 
-### Accounts later (Google)
+### Leaving, deleting, exporting
 
-- The site signs in with Google, and the Worker checks the ID token: Google's signature, the
-  audience, the issuer and the expiry.
-- The account is linked to the member the device holds. From then on, the account can bring the
-  member to any new device, with no move link.
-- The owner may require accounts in a group. Only the account's subject id is stored, with the
-  email if the owner wants to show it.
+- A member can leave. Their entries go with them, or stay under "a former player" if a
+  finished season needs them.
+- The owner can delete the group after typing its name. Everything goes, at once.
+- The owner can export the group as JSON at any time: their data is theirs.
 
 ### Testing
 
-- **The capability matrix:** every role × every action, allowed and refused, on the Worker,
-  in the Workers runtime (`@cloudflare/vitest-pool-workers`).
-- **Every refusal:** no token; a wrong token; a token of another group; a revoked device; a
-  non-admin; too big; an unknown field or country; after the lock; over a limit; an expired or
-  used move link.
-- **Secrecy:** hidden entries are absent from the response, not only from the screen.
-- **The browser test** runs against a local Worker with two devices: join, pick names, a
-  takeover of a protected name refused, a move link that works once, a hidden entry revealed
-  at its time, and a live room followed by the second device.
+- **The capability matrix:** every role × every action, allowed and refused, run in the
+  Workers runtime.
+- **Every refusal:**
+  - no token, a wrong token, another group's token, a revoked device, an expired session;
+  - not the admin or not the owner;
+  - a body too big, an unknown field, an unknown country;
+  - a write after the lock, any request over a limit;
+  - an invite revoked, expired or used up;
+  - a Google token with the wrong audience, a wrong issuer, or expired.
+- **Secrecy:** hidden entries are absent from every response.
+- **The browser test** runs against a local Worker with two devices. One opens a group, the
+  other joins with the link and picks a name. A takeover is logged, a hidden entry is revealed
+  at its time, and a live room is followed by the second device. Google sign-in is tested with a
+  stub of Google's endpoints, never the real one.
