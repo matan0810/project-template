@@ -47,6 +47,7 @@ documents a project keeps. Everything works on the first push.
 | ------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
 | `CLAUDE.md`                                             | The working method; section 13 holds the project's own facts                                             |
 | `README.md`, `DESIGN.md`, `CHANGELOG.md`, `SECURITY.md` | The project's documents, as skeletons                                                                    |
+| `SERVER.md`                                             | For a project with a server: one platform, identity and access                                           |
 | `src/`                                                  | The site: first screen, Hebrew and English strings, saved settings, design tokens                        |
 | `vite.config.ts`                                        | Build, the Pages path from `package.json`, the Content Security Policy, the brand's title and link card  |
 | `brand.json`, `public/`                                 | The name and tagline; the mark, the icons, the manifest and the link card (`brand/card.jpg`)             |
