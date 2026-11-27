@@ -9,3 +9,5 @@ All changes a user or the owner would notice are recorded here. The format follo
 ### Added
 
 - The first screen, in Hebrew and English, with the version in the header.
+- The brand everywhere the address travels: the tab's title, the icons, the web manifest,
+  and a link card (1200 × 630) that chats show for the site's address.

@@ -67,6 +67,15 @@ async function main() {
   assert.match(policy ?? '', /default-src 'none'/, 'the page carries its CSP');
   step('desktop: Hebrew, right to left, with the version and the CSP');
 
+  const { homepage } = JSON.parse(await readFile(new URL('../../package.json', import.meta.url)));
+  const { name } = JSON.parse(await readFile(new URL('../../brand.json', import.meta.url)));
+  assert.equal(await page.title(), name, 'the tab is titled with the brand');
+  const card = await page.locator('meta[property="og:image"]').getAttribute('content');
+  assert.equal(card, `${homepage.replace(/\/$/, '')}/brand/card.jpg`, 'the link card is absolute');
+  for (const file of ['brand/card.jpg', 'apple-touch-icon.png', 'manifest.webmanifest'])
+    assert.equal((await page.request.get(`${url}${file}`)).status(), 200, `${file} is served`);
+  step('brand: the title, the icons and the link card a chat shows for the address');
+
   await page.getByRole('button', { name: 'Switch to English' }).click();
   assert.equal(await page.evaluate(() => document.documentElement.dir), 'ltr');
   await page.reload();

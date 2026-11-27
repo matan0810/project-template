@@ -34,7 +34,9 @@ documents a project keeps. Everything works on the first push.
 3. In `CLAUDE.md`: replace every `{{PLACEHOLDER}}`, fill section 13, delete what does not
    apply and the opening comment. Do the same in `DESIGN.md` and `SECURITY.md`, and rewrite
    this README for the project.
-4. Replace the first screen, the strings and the favicon.
+4. Replace the first screen and the strings. Set the brand (`CLAUDE.md`, section 5): the
+   name and tagline in `brand.json`, the mark in `public/favicon.svg`, the colours in
+   `src/styles/global.css`; then `node scripts/brand.ts` draws the icons and the link card.
 5. `npm run check`, `npm run build && npm run e2e`, push `dev`, check CI.
 6. On the owner's order, the first release: `npm run bump -- minor` (0.0.0 → 0.1.0), then
    `CLAUDE.md`, section 9. From then on, the live site exists and every release is tagged.
@@ -46,8 +48,9 @@ documents a project keeps. Everything works on the first push.
 | `CLAUDE.md`                                             | The working method; section 13 holds the project's own facts                                             |
 | `README.md`, `DESIGN.md`, `CHANGELOG.md`, `SECURITY.md` | The project's documents, as skeletons                                                                    |
 | `src/`                                                  | The site: first screen, Hebrew and English strings, saved settings, design tokens                        |
-| `vite.config.ts`                                        | Build, the Pages path from `package.json`, the Content Security Policy                                   |
-| `scripts/`                                              | `npm run bump`, the CHANGELOG helpers, the release plan, their tests                                     |
+| `vite.config.ts`                                        | Build, the Pages path from `package.json`, the Content Security Policy, the brand's title and link card  |
+| `brand.json`, `public/`                                 | The name and tagline; the mark, the icons, the manifest and the link card (`brand/card.jpg`)             |
+| `scripts/`                                              | `npm run bump`, the CHANGELOG helpers, the release plan, `brand.ts` (the brand files), their tests       |
 | `tests/e2e/smoke.mjs`                                   | Browser test: desktop and phone, both languages, CSP, no outside hosts                                   |
 | `.github/workflows/`                                    | `checks.yml` (every check), `ci.yml` (dev and pull requests), `deploy.yml` (Pages, then tag and release) |
 | `.github/dependabot.yml`                                | Grouped monthly updates against `dev`                                                                    |
