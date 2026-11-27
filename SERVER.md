@@ -5,9 +5,19 @@ what they may do, how it is watched, and how it is tested. A project without a s
 this file. A project with one follows it, and records its own choices in `CLAUDE.md`
 (section 13) and `SECURITY.md`.
 
-Status: draft of 2026-11-27, written at the owner's request: one place for every server, and
-user management raised from family-bingo's to a professional standard. Waiting for the owner's
-choice of platform (part 1) and of access level (part 2).
+Status: decided by the owner on 2026-11-27. Every server goes to **Cloudflare** (part 1).
+People and access start at **level 2 without Google**, then add Google sign-in for managers,
+then for everyone (part 2).
+
+**Generic and flexible.** The standard fixes the shape, not the numbers:
+
+- The limits, the roles' capabilities, the phases and the usage warnings are configuration
+  in each project's `shared/`, with the defaults below.
+- The way people prove who they are is a pluggable provider: a device token today, Google
+  later, both side by side.
+- Storage sits behind a thin interface of our own.
+
+A project adds what it needs without forking the rest.
 
 Built on these professional references:
 
@@ -36,60 +46,41 @@ Built on these professional references:
 | Works with no reception, syncs later | Our own code                                  | Built in                                | Our own code               |
 | Already used by                      | OnAir (`live-video`)                          | family-bingo                            | kavoom                     |
 
-### Cloudflare's drawbacks, honestly
+### The drawbacks, side by side
 
-1. **A different runtime.** Workers are not Node: some npm packages do not run, and local
-   development and tests need Cloudflare's tools (`wrangler`, the Workers test pool).
-2. **10 ms of CPU per request on the free plan.** It is plenty for checks, scores and
-   database work, since waiting on the network does not count. It is not enough to draw an
-   image or run heavy maths per request: such work is done ahead of time, or moved to the paid
-   plan ($5 a month).
-3. **Hard daily caps on the free plan.** 100,000 requests a day for Workers, and D1's daily
-   read and write quotas. Past a cap, requests fail until midnight UTC; nothing is billed.
-   Hence the usage warnings below.
-4. **D1 is SQLite.** It has one primary database, a 10 GB cap per database, and no
-   long-running transactions (statements are sent as a batch). This fits our data; a database
-   for heavy analytics it is not.
-5. **Lock-in.** D1 and Durable Objects are Cloudflare's own. To keep a way out, the rules live
-   in `shared/`, and the storage behind a thin interface of our own, so another host means
-   rewriting the adapter, not the app.
-6. **Build it ourselves.** Accounts, offline sync and email are not provided: more code of our
-   own, and more tests.
-7. **One account for every project.** It is one point of failure. Each project gets its own
-   API token, limited to its own resources, and the account has two-factor sign-in.
-8. **Shorter logs on the free plan.** We keep our own audit and usage records in the database
-   for what matters.
+Cloudflare's drawbacks, each compared with the other two, and how much each one costs us in
+practice.
 
-Firebase's drawbacks, for balance:
+| #   | Point                      | Cloudflare                                                                            | Firebase                                                               | Render                                                                    | What it costs us                                                                                                                                                                                                              |
+| --- | -------------------------- | ------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- | ------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | The runtime                | Workers: web standards (`fetch`, Web Crypto, WebSocket), with only part of Node's API | No server code of our own on the free plan; the rules language instead | Full Node                                                                 | **Little.** Our code is TypeScript on web standards anyway. What changes: a package built on Node internals (kavoom's `ws`) gives way to the platform's WebSocket, and tests run in the Workers runtime (one dev dependency). |
+| 2   | CPU per request            | 10 ms on the free plan (waiting on the network is free)                               | The rules may read at most 10 documents per request                    | A tenth of a CPU, shared, and asleep when idle                            | **None for us**: checks, scores and database work take about a millisecond. Drawing images per request is ruled out; images are drawn ahead of time.                                                                          |
+| 3   | Free daily caps            | 100,000 requests; D1 reads and writes by quota                                        | 50,000 reads, 20,000 writes, 20,000 deletes, 1 GiB stored              | 750 hours a month for all services together; sleeps after 15 idle minutes | **None at our size**, and the usage warnings say early if that changes.                                                                                                                                                       |
+| 4   | The database               | D1 (SQLite): relational, 5 GB free, batches instead of long transactions              | Firestore: documents, no joins                                         | None free that lasts (its free Postgres expires after 30 days)            | **None**: our data is small and relational.                                                                                                                                                                                   |
+| 5   | Lock-in                    | Medium: D1 and Durable Objects are its own                                            | High: the SDK and the rules spread through the client                  | Low for the code, but a database still has to come from elsewhere         | **Little**, with storage behind our own thin interface.                                                                                                                                                                       |
+| 6   | What is built in           | Nothing for accounts or offline                                                       | Accounts (Google too), offline, live queries                           | Nothing                                                                   | **Some**: Google sign-in is about a day's work, written once in the template and reused. Offline is not needed (the owner, 2026-11-27).                                                                                       |
+| 7   | One account for everything | A token per project, limited to its resources; two-factor sign-in                     | The same                                                               | The same                                                                  | **None**: the same for any host.                                                                                                                                                                                              |
+| 8   | Logs                       | Short on the free plan                                                                | Short                                                                  | Short                                                                     | **None**: what matters (audit, usage) we keep in our own database.                                                                                                                                                            |
 
-- No server code without the paid plan.
-- A heavy SDK, served from Google's hosts, so the CSP must allow them.
-- The rules language is hard to test deeply (family-bingo's rules hit the limit of 10 document
-  reads per request).
-- Data shaped around documents, not relations.
+**The decision: Cloudflare** (the owner, 2026-11-27). It is the only one of the three that runs
+our own code, holds live rooms and stays awake for free. Where it costs us, it costs little and
+once.
 
-Render's drawback: the free server sleeps, so the first visit waits about 30 seconds.
+### Offline play
 
-**Recommendation: Cloudflare.** It is the only one of the three that runs our own code, holds
-live rooms and stays awake for free. Its drawbacks are answered above. Firebase stays where its
-built-in offline sync is the point (family-bingo on a trip), until moving is worth it.
+Firebase keeps a copy of the game on the phone, so family-bingo opens with no reception and a
+cell marked in a tunnel is sent later. The owner decided that this is not needed (2026-11-27),
+so family-bingo moves to Cloudflare too. A project that ever needs offline play adds a local
+copy and a queue of pending changes; that is not part of this standard.
 
-### "Works with no reception"
-
-family-bingo is played on a road trip, often without reception. Firestore keeps a copy of the
-game on the phone, so the game opens with no signal, and a cell marked in a tunnel is kept and
-sent when the signal returns. On Cloudflare we would have to build that ourselves: a local copy
-in the browser, a queue of pending changes, and a rule for two phones that changed the same
-thing. It is possible, but it is real work, and it is why family-bingo stays on Firebase for now.
-
-### Moving the existing servers (after the owner chooses)
+### Moving the existing servers
 
 | Project      | Today                    | Plan                                                                        |
 | ------------ | ------------------------ | --------------------------------------------------------------------------- |
 | OnAir        | Cloudflare Worker and KV | Stays; adopts part 2 when it gains users                                    |
 | Douze        | No server                | Built on Cloudflare from the start                                          |
 | kavoom       | Node on Render           | Each room becomes a Durable Object; the site moves to Workers static assets |
-| family-bingo | Firebase                 | Stays while offline play matters; adopts part 2's model in its rules        |
+| family-bingo | Firebase                 | Moves to Cloudflare: D1 for the game, the access model of part 2            |
 
 ### How a server project is laid out
 
@@ -146,6 +137,9 @@ limit, move to the paid plan).
 6. **Every limit written down,** in `shared/` and tested.
 7. **Proportionate.** Each control below is marked with the level that needs it, so a game
    among friends does not carry a bank's machinery.
+8. **Generic.** The capability table, the phases and the limits are each project's
+   configuration. The identity provider is a plug: device tokens and Google sign-in answer the
+   same question, "who is this?", so adding Google changes no rule.
 
 ### Roles
 
@@ -162,13 +156,23 @@ Rules:
 
 ### Three levels of who is who
 
-| Level | Who signs in                                             | Fits                                                                  |
-| ----- | -------------------------------------------------------- | --------------------------------------------------------------------- |
-| **1** | Nobody: an invite link, a name, the phone remembers      | One small trusted group, nothing to lose (family-bingo today)         |
-| **2** | **Owners and admins with Google; players with the link** | Anyone may open groups; players join in a tap (**recommended start**) |
-| **3** | Everyone with Google                                     | Personal history across years and devices; groups of strangers        |
+| Level | Who signs in                                             | Fits                                                           |
+| ----- | -------------------------------------------------------- | -------------------------------------------------------------- |
+| **1** | Nobody: an invite link, a name, the phone remembers      | One small trusted group, nothing to lose (family-bingo today)  |
+| **2** | **Owners and admins with Google; players with the link** | Anyone may open groups; players join in a tap                  |
+| **3** | Everyone with Google                                     | Personal history across years and devices; groups of strangers |
 
-**Why level 2 to start.** Most of the hard parts of level 1 exist only to protect the people who
+**The path (the owner, 2026-11-27):**
+
+1. **Level 2 without Google, now.** The roles, the invite, the capability table, the audit log
+   and the limits of level 2 are built as they are. Managers, like players, are known by their
+   device token. There are no users yet, so the known risk is accepted: a lost owner phone
+   loses the management of a group. The owner can name a second admin as a spare. Recovery
+   codes and move links are not built: Google replaces them next.
+2. **Google sign-in for managers, soon.** Level 2 as designed.
+3. **Google sign-in for everyone who wants it.** Level 3, per person.
+
+**Why level 2.** Most of the hard parts of level 1 exist only to protect the people who
 manage a group when nobody signs in:
 
 - **The recovery code:** a lost owner phone means a lost group.
